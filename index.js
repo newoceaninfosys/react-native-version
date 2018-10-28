@@ -149,13 +149,29 @@ function version(program, projectPath) {
 				})
 			});
 		}
-	} catch (err) {}
+	} catch (err) {
+	}
 
 	var android;
 	var ios;
+	const myenv = path.join(projPath, '.env');
+	let evnFile = null;
+	if(fs.existsSync(myenv)) {
+		evnFile = fs.readFileSync(myenv, "utf8");
+
+		log({ text: "Versioning ENV..." }, programOpts.quiet);
+		evnFile = evnFile.replace(
+			/VERSION=(.*)/,
+			"VERSION=" + appPkg.version
+		);
+
+		fs.writeFileSync(myenv, evnFile);
+
+		log({ text: "ENV Updated" }, programOpts.quiet);
+	}
 
 	if (!targets.length || targets.indexOf("android") > -1) {
-		android = new Promise(function(resolve, reject) {
+		android = new Promise(function (resolve, reject) {
 			log({ text: "Versioning Android..." }, programOpts.quiet);
 
 			var gradleFile;
@@ -164,16 +180,16 @@ function version(program, projectPath) {
 				gradleFile = fs.readFileSync(programOpts.android, "utf8");
 			} catch (err) {
 				isExpoApp ||
-					reject([
-						{
-							style: "red",
-							text: "No gradle file found at " + programOpts.android
-						},
-						{
-							style: "yellow",
-							text: 'Use the "--android" option to specify the path manually'
-						}
-					]);
+				reject([
+					{
+						style: "red",
+						text: "No gradle file found at " + programOpts.android
+					},
+					{
+						style: "yellow",
+						text: 'Use the "--android" option to specify the path manually'
+					}
+				]);
 			}
 
 			if (!programOpts.incrementBuild && !isExpoApp) {
@@ -199,13 +215,17 @@ function version(program, projectPath) {
 						})
 					});
 				} else {
-					gradleFile = gradleFile.replace(/versionCode (\d+)/, function(
+					gradleFile = gradleFile.replace(/versionCode (\d+)/, function (
 						match,
 						cg1
 					) {
+						const verParts = appPkg.version.split('.');
+						let major = verParts[0];
+						let minor = ("0" + verParts[1]).slice(-2);
+						let patch = ("0" + verParts[2]).slice(-2);
 						const newVersionCodeNumber = programOpts.setBuild
 							? programOpts.setBuild
-							: parseInt(cg1, 10) + 1;
+							: major + minor + patch + '001';
 
 						return "versionCode " + newVersionCodeNumber;
 					});
@@ -224,7 +244,7 @@ function version(program, projectPath) {
 	}
 
 	if (!targets.length || targets.indexOf("ios") > -1) {
-		ios = new Promise(function(resolve, reject) {
+		ios = new Promise(function (resolve, reject) {
 			log({ text: "Versioning iOS..." }, programOpts.quiet);
 
 			if (isExpoApp) {
@@ -280,21 +300,21 @@ function version(program, projectPath) {
 					reject(
 						stdout.indexOf("directory") > -1
 							? [
-									{
-										style: "red",
-										text: "No project folder found at " + programOpts.ios
-									},
-									{
-										style: "yellow",
-										text: 'Use the "--ios" option to specify the path manually'
-									}
-							  ]
+								{
+									style: "red",
+									text: "No project folder found at " + programOpts.ios
+								},
+								{
+									style: "yellow",
+									text: 'Use the "--ios" option to specify the path manually'
+								}
+							]
 							: [
-									{
-										style: "red",
-										text: stdout
-									}
-							  ]
+								{
+									style: "red",
+									text: stdout
+								}
+							]
 					);
 
 					return;
@@ -338,35 +358,35 @@ function version(program, projectPath) {
 
 				xcode.document.projects.forEach(project => {
 					!programOpts.neverIncrementBuild &&
-						project.targets.filter(Boolean).forEach(target => {
-							target.buildConfigurationsList.buildConfigurations.forEach(
-								config => {
-									if (target.name === appPkg.name) {
-										var CURRENT_PROJECT_VERSION = 1;
+					project.targets.filter(Boolean).forEach(target => {
+						target.buildConfigurationsList.buildConfigurations.forEach(
+							config => {
+								if (target.name === appPkg.name) {
+									var CURRENT_PROJECT_VERSION = 1;
 
-										if (!programOpts.resetBuild) {
-											CURRENT_PROJECT_VERSION =
-												parseInt(
-													config.ast.value
-														.get("buildSettings")
-														.get("CURRENT_PROJECT_VERSION").text,
-													10
-												) + 1;
-										}
-
-										if (programOpts.setBuild) {
-											CURRENT_PROJECT_VERSION = programOpts.setBuild;
-										}
-
-										config.patch({
-											buildSettings: {
-												CURRENT_PROJECT_VERSION
-											}
-										});
+									if (!programOpts.resetBuild) {
+										CURRENT_PROJECT_VERSION =
+											parseInt(
+												config.ast.value
+													.get("buildSettings")
+													.get("CURRENT_PROJECT_VERSION").text,
+												10
+											) + 1;
 									}
+
+									if (programOpts.setBuild) {
+										CURRENT_PROJECT_VERSION = programOpts.setBuild;
+									}
+
+									config.patch({
+										buildSettings: {
+											CURRENT_PROJECT_VERSION
+										}
+									});
 								}
-							);
-						});
+							}
+						);
+					});
 
 					const plistFiles = plistFilenames.map(filename => {
 						return fs.readFileSync(
@@ -379,6 +399,11 @@ function version(program, projectPath) {
 						return plist.parse(file);
 					});
 
+					const verParts = appPkg.version.split('.');
+					let major = verParts[0];
+					let minor = ("0" + verParts[1]).slice(-2);
+					let patch = ("0" + verParts[2]).slice(-2);
+
 					parsedPlistFiles.forEach((json, index) => {
 						fs.writeFileSync(
 							path.join(programOpts.ios, plistFilenames[index]),
@@ -388,25 +413,25 @@ function version(program, projectPath) {
 									json,
 									!programOpts.incrementBuild
 										? {
-												CFBundleShortVersionString: appPkg.version
-										  }
+											CFBundleShortVersionString: appPkg.version
+										}
 										: {},
 									!programOpts.neverIncrementBuild
 										? Object.assign(
-												{},
-												{
-													CFBundleVersion: `${
-														programOpts.resetBuild
-															? 1
-															: parseInt(json.CFBundleVersion, 10) + 1
-													}`
-												},
-												programOpts.setBuild
-													? {
-															CFBundleVersion: programOpts.setBuild.toString()
-													  }
-													: {}
-										  )
+										{},
+										{
+											CFBundleVersion: `${
+												programOpts.resetBuild
+													? major + minor + major + '000'
+													: major + minor + major + '001'
+												}`
+										},
+										programOpts.setBuild
+											? {
+												CFBundleVersion: programOpts.setBuild.toString()
+											}
+											: {}
+										)
 										: {}
 								)
 							)
@@ -422,21 +447,21 @@ function version(program, projectPath) {
 							<?xml version="1.0" encoding="UTF-8"?>
 							<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 							<plist version="1.0">` +
-								"\n" +
-								beautify(
-									fs
-										.readFileSync(path.join(programOpts.ios, filename), "utf8")
-										.match(/<dict>[\s\S]*<\/dict>/)[0],
-									Object.assign(
-										{ end_with_newline: true },
-										indent.type === "tab"
-											? { indent_with_tabs: true }
-											: { indent_size: indent.amount }
-									)
-								) +
-								stripIndents`
+							"\n" +
+							beautify(
+								fs
+									.readFileSync(path.join(programOpts.ios, filename), "utf8")
+									.match(/<dict>[\s\S]*<\/dict>/)[0],
+								Object.assign(
+									{ end_with_newline: true },
+									indent.type === "tab"
+										? { indent_with_tabs: true }
+										: { indent_size: indent.amount }
+								)
+							) +
+							stripIndents`
 							</plist>` +
-								"\n"
+							"\n"
 						);
 					});
 				});
@@ -450,21 +475,21 @@ function version(program, projectPath) {
 	}
 
 	return pSettle([android, ios].filter(Boolean))
-		.then(function(result) {
+		.then(function (result) {
 			const errs = result
-				.filter(function(item) {
+				.filter(function (item) {
 					return item.isRejected;
 				})
-				.map(function(item) {
+				.map(function (item) {
 					return item.reason;
 				});
 
 			if (errs.length) {
 				errs
-					.reduce(function(a, b) {
+					.reduce(function (a, b) {
 						return a.concat(b);
 					}, [])
-					.forEach(function(err) {
+					.forEach(function (err) {
 						if (program.outputHelp) {
 							log(
 								Object.assign({ style: "red", text: err.toString() }, err),
@@ -478,9 +503,9 @@ function version(program, projectPath) {
 				}
 
 				throw errs
-					.map(function(errGrp, index) {
+					.map(function (errGrp, index) {
 						return errGrp
-							.map(function(err) {
+							.map(function (err) {
 								return err.text;
 							})
 							.join(", ");
@@ -551,7 +576,7 @@ function version(program, projectPath) {
 
 			return child.execSync("git log -1 --pretty=%H", gitCmdOpts).toString();
 		})
-		.catch(function(err) {
+		.catch(function (err) {
 			if (process.env.RNV_ENV === "ava") {
 				console.error(err);
 			}
