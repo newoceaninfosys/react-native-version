@@ -422,8 +422,8 @@ function version(program, projectPath) {
 										{
 											CFBundleVersion: `${
 												programOpts.resetBuild
-													? major + minor + major + '000'
-													: major + minor + major + '001'
+													? major + minor + patch + '000'
+													: major + minor + patch + '001'
 												}`
 										},
 										programOpts.setBuild
